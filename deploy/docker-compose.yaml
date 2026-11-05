@@ -1,0 +1,488 @@
+services:
+  postgres-payments:
+    image: postgres:15.7
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PAYMENTS_PG_DB}
+      POSTGRES_USER: ${PAYMENTS_PG_USER}
+      POSTGRES_PASSWORD: ${PAYMENTS_PG_PASSWORD}
+    volumes:
+      - postgres_payments_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PAYMENTS_PG_USER} -d ${PAYMENTS_PG_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [arm_net]
+
+  postgres-cars:
+    image: postgres:15.7
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${CARS_PG_DB}
+      POSTGRES_USER: ${CARS_PG_USER}
+      POSTGRES_PASSWORD: ${CARS_PG_PASSWORD}
+    volumes:
+      - postgres_cars_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CARS_PG_USER} -d ${CARS_PG_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [arm_net]
+
+  postgres-chats:
+    image: postgres:15.7
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${CHATS_PG_DB}
+      POSTGRES_USER: ${CHATS_PG_USER}
+      POSTGRES_PASSWORD: ${CHATS_PG_PASSWORD}
+    volumes:
+      - postgres_chats_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${CHATS_PG_USER} -d ${CHATS_PG_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [arm_net]
+
+  postgres-users:
+    image: postgres:15.7
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${USERS_PG_DB}
+      POSTGRES_USER: ${USERS_PG_USER}
+      POSTGRES_PASSWORD: ${USERS_PG_PASSWORD}
+    volumes:
+      - postgres_users_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${USERS_PG_USER} -d ${USERS_PG_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [arm_net]
+
+  migrate-cars:
+    image: ghcr.io/arm-auto-place/migrations-cars:v0.0.0-1
+    platform: linux/amd64
+    restart: "no"
+    environment:
+      PG_ADDRESS: postgres-cars:5432
+      PG_DB: ${CARS_PG_DB}
+      PG_USER: ${CARS_PG_USER}
+      PG_PASSWORD: ${CARS_PG_PASSWORD}
+      MIGRATION_DIR: ${CARS_MIGRATION_DIR}
+    depends_on:
+      postgres-cars:
+        condition: service_healthy
+    networks: [arm_net]
+
+  migrate-users:
+    image: ghcr.io/arm-auto-place/migrations-users:v0.0.0-1
+    platform: linux/amd64
+    restart: "no"
+    environment:
+      PG_ADDRESS: postgres-users:5432
+      PG_DB: ${USERS_PG_DB}
+      PG_USER: ${USERS_PG_USER}
+      PG_PASSWORD: ${USERS_PG_PASSWORD}
+      MIGRATION_DIR: ${USERS_MIGRATION_DIR}
+    depends_on:
+      postgres-users:
+        condition: service_healthy
+    networks: [arm_net]
+
+  migrate-chats:
+    image: ghcr.io/arm-auto-place/migrations-chats:v0.0.0-1
+    platform: linux/amd64
+    restart: "no"
+    environment:
+      PG_ADDRESS: postgres-chats:5432
+      PG_DB: ${CHATS_PG_DB}
+      PG_USER: ${CHATS_PG_USER}
+      PG_PASSWORD: ${CHATS_PG_PASSWORD}
+      MIGRATION_DIR: ${CHATS_MIGRATION_DIR}
+    depends_on:
+      postgres-chats:
+        condition: service_healthy
+    networks: [arm_net]
+
+  migrate-payments:
+    image: ghcr.io/arm-auto-place/migrations-payments:v0.0.0-1
+    platform: linux/amd64
+    restart: "no"
+    environment:
+      PG_ADDRESS: postgres-payments:5432
+      PG_DB: ${PAYMENTS_PG_DB}
+      PG_USER: ${PAYMENTS_PG_USER}
+      PG_PASSWORD: ${PAYMENTS_PG_PASSWORD}
+      MIGRATION_DIR: ${PAYMENTS_MIGRATION_DIR}
+    depends_on:
+      postgres-payments:
+        condition: service_healthy
+    networks: [arm_net]
+  # minio:
+  #   image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+  #   restart: unless-stopped
+  #   command: server /data --console-address ":9001"
+  #   environment:
+  #     MINIO_ROOT_USER: ${S3_ACCESS_KEY}
+  #     MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY}
+  #   ports:
+  #     - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+  #     - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+  #   volumes:
+  #     - minio_data:/data
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+  #     interval: 5s
+  #     timeout: 5s
+  #     retries: 20
+  #   networks: [arm_net]
+  # minio-init:
+  #   image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+  #   restart: "no"
+  #   depends_on:
+  #     minio:
+  #       condition: service_healthy
+  #   environment:
+  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
+  #     S3_BUCKET: ${S3_BUCKET}
+  #   entrypoint:
+  #     - /bin/sh
+  #     - -ec
+  #     - |
+  #       mc alias set amc http://minio:9000 "$${S3_ACCESS_KEY}" "$${S3_SECRET_KEY}"
+  #       mc mb --ignore-existing "amc/$${S3_BUCKET}"
+  #       mc anonymous set download "amc/$${S3_BUCKET}"
+  #   networks: [arm_net]
+  # auth:
+  #   image: ghcr.io/mbatimel/amc-auth:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PG_HOST: postgres
+  #     PG_PORT: "5432"
+  #     PG_DB: ${PG_DB}
+  #     PG_USER: ${PG_USER}
+  #     PG_PASSWORD: ${PG_PASSWORD}
+  #     API_FNS_ADDR: ${API_FNS_ADDR}
+  #     API_FNS_KEY: ${API_FNS_KEY}
+  #     BIND_ADDR: ":8081"
+  #     ACCESS_URL: "http://access:8080"
+  #     S3_ENDPOINT: "http://minio:9000"
+  #     S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
+  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
+  #     S3_BUCKET: ${S3_BUCKET}
+  #     S3_REGION: ${S3_REGION}
+  #     S3_USE_SSL: "false"
+  #     S3_MAX_FILE_SIZE: ${S3_MAX_FILE_SIZE}
+  #     SMTP_HOST: ${SMTP_HOST:-}
+  #     SMTP_PORT: ${SMTP_PORT:-587}
+  #     SMTP_USERNAME: ${SMTP_USERNAME:-}
+  #     SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  #     SMTP_FROM: ${SMTP_FROM:-}
+  #     PUBLIC_FRONT_BASE_URL: ${PUBLIC_FRONT_BASE_URL:-}
+  #     RESET_TOKEN_TTL: ${RESET_TOKEN_TTL:-30m}
+  #   depends_on:
+  #     migrations:
+  #       condition: service_completed_successfully
+  #     minio-init:
+  #       condition: service_completed_successfully
+  #   networks: [arm_net]
+  # access:
+  #   image: ghcr.io/mbatimel/amc-access:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PG_HOST: postgres
+  #     PG_PORT: "5432"
+  #     PG_DB: ${PG_DB}
+  #     PG_USER: ${PG_USER}
+  #     PG_PASSWORD: ${PG_PASSWORD}
+  #     ACCESS_INTERNAL_ADDRESS: ":8080"
+  #   depends_on:
+  #     migrations:
+  #       condition: service_completed_successfully
+  #   networks: [arm_net]
+  # chat:
+  #   image: ghcr.io/mbatimel/amc-chat:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PG_HOST: postgres
+  #     PG_PORT: "5432"
+  #     PG_DB: ${PG_DB}
+  #     PG_USER: ${PG_USER}
+  #     PG_PASSWORD: ${PG_PASSWORD}
+  #     BIND_ADDR: ":8086"
+  #     ACCESS_URL: "http://access:8080"
+  #   depends_on:
+  #     migrations:
+  #       condition: service_completed_successfully
+  #     access:
+  #       condition: service_started
+  #   networks: [arm_net]
+  # assistant_bot:
+  #   image: ghcr.io/mbatimel/amc-orders:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PG_HOST: postgres
+  #     PG_PORT: "5432"
+  #     PG_DB: ${PG_DB}
+  #     PG_USER: ${PG_USER}
+  #     PG_PASSWORD: ${PG_PASSWORD}
+  #     ACCESS_URL: "http://access:8080"
+  #     NDS_VALUE: ${NDS_VALUE}
+  #     INTEGRATIONS_URL: "http://onec-orders-api:8090"
+  #     # Must stay > onec-orders-api's ONEC_ORDERS_REQUEST_TIMEOUT (15s): this
+  #     # call wraps that one, and expiring first would roll the order back while
+  #     # 1С may already have created the document.
+  #     INTEGRATIONS_TIMEOUT: "20s"
+  #     SMTP_HOST: ${SMTP_HOST:-}
+  #     SMTP_PORT: ${SMTP_PORT:-587}
+  #     SMTP_USERNAME: ${SMTP_USERNAME:-}
+  #     SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  #     SMTP_FROM: ${SMTP_FROM:-}
+  #     SMTP_TLS: ${SMTP_TLS:-true}
+  #     SMTP_TIMEOUT: ${SMTP_TIMEOUT:-10s}
+  #   depends_on:
+  #     migrations:
+  #       condition: service_completed_successfully
+  #     onec-orders-api:
+  #       condition: service_started
+  #   networks: [arm_net]
+  # cv-number-blur:
+  #   image: ghcr.io/mbatimel/amc-users:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PG_HOST: postgres
+  #     PG_PORT: "5432"
+  #     PG_DB: ${PG_DB}
+  #     PG_USER: ${PG_USER}
+  #     PG_PASSWORD: ${PG_PASSWORD}
+  #     BIND_ADDR: ":8083"
+  #     ACCESS_URL: "http://access:8080"
+  #     SMTP_HOST: ${SMTP_HOST:-}
+  #     SMTP_PORT: ${SMTP_PORT:-587}
+  #     SMTP_USERNAME: ${SMTP_USERNAME:-}
+  #     SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  #     SMTP_FROM: ${SMTP_FROM:-}
+  #   depends_on:
+  #     migrations:
+  #       condition: service_completed_successfully
+  #     access:
+  #       condition: service_started
+  #   networks: [arm_net]
+  # photo_advisor:
+  #   image: ghcr.io/mbatimel/amc-users:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PG_HOST: postgres
+  #     PG_PORT: "5432"
+  #     PG_DB: ${PG_DB}
+  #     PG_USER: ${PG_USER}
+  #     PG_PASSWORD: ${PG_PASSWORD}
+  #     BIND_ADDR: ":8083"
+  #     ACCESS_URL: "http://access:8080"
+  #     SMTP_HOST: ${SMTP_HOST:-}
+  #     SMTP_PORT: ${SMTP_PORT:-587}
+  #     SMTP_USERNAME: ${SMTP_USERNAME:-}
+  #     SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  #     SMTP_FROM: ${SMTP_FROM:-}
+  #   depends_on:
+  #     migrations:
+  #       condition: service_completed_successfully
+  #     access:
+  #       condition: service_started
+  #   networks: [arm_net]
+  # admin:
+  #   image: ghcr.io/mbatimel/amc-admin:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PG_HOST: postgres
+  #     PG_PORT: "5432"
+  #     PG_DB: ${PG_DB}
+  #     PG_USER: ${PG_USER}
+  #     PG_PASSWORD: ${PG_PASSWORD}
+  #     BIND_ADDR: ":8084"
+  #     ACCESS_URL: "http://access:8080"
+  #     AUTH_URL: "http://auth:8081"
+  #     SMTP_HOST: ${SMTP_HOST:-}
+  #     SMTP_PORT: ${SMTP_PORT:-587}
+  #     SMTP_USERNAME: ${SMTP_USERNAME:-}
+  #     SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  #     SMTP_FROM: ${SMTP_FROM:-}
+  #     SMTP_TLS: ${SMTP_TLS:-true}
+  #     SMTP_TIMEOUT: ${SMTP_TIMEOUT:-10s}
+  #     COMPANY_REQUEST_RECIPIENT: ${COMPANY_REQUEST_RECIPIENT:-order@voint.ru}
+  #     S3_ENDPOINT: "http://minio:9000"
+  #     S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
+  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
+  #     S3_BUCKET: ${S3_BUCKET}
+  #     S3_REGION: ${S3_REGION}
+  #     S3_USE_SSL: "false"
+  #     S3_MAX_FILE_SIZE: ${S3_MAX_FILE_SIZE}
+  #   depends_on:
+  #     migrations:
+  #       condition: service_completed_successfully
+  #     access:
+  #       condition: service_started
+  #     auth:
+  #       condition: service_started
+  #     minio-init:
+  #       condition: service_completed_successfully
+  #   networks: [arm_net]
+  # auto:
+  #   image: ghcr.io/mbatimel/amc-products:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PG_HOST: postgres
+  #     PG_PORT: "5432"
+  #     PG_DB: ${PG_DB}
+  #     PG_USER: ${PG_USER}
+  #     PG_PASSWORD: ${PG_PASSWORD}
+  #     BIND_ADDR: ":8085"
+  #     ACCESS_URL: "http://access:8080"
+  #     S3_ENDPOINT: "http://minio:9000"
+  #     S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
+  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
+  #     S3_BUCKET: ${S3_BUCKET}
+  #     S3_REGION: ${S3_REGION}
+  #     S3_USE_SSL: "false"
+  #     S3_MAX_FILE_SIZE: ${S3_MAX_FILE_SIZE}
+  #   depends_on:
+  #     migrations:
+  #       condition: service_completed_successfully
+  #     access:
+  #       condition: service_started
+  #     minio-init:
+  #       condition: service_completed_successfully
+  #   networks: [arm_net]
+  # users:
+  #   image: ghcr.io/mbatimel/amc-products:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PG_HOST: postgres
+  #     PG_PORT: "5432"
+  #     PG_DB: ${PG_DB}
+  #     PG_USER: ${PG_USER}
+  #     PG_PASSWORD: ${PG_PASSWORD}
+  #     BIND_ADDR: ":8085"
+  #     ACCESS_URL: "http://access:8080"
+  #     S3_ENDPOINT: "http://minio:9000"
+  #     S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT}
+  #     S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+  #     S3_SECRET_KEY: ${S3_SECRET_KEY}
+  #     S3_BUCKET: ${S3_BUCKET}
+  #     S3_REGION: ${S3_REGION}
+  #     S3_USE_SSL: "false"
+  #     S3_MAX_FILE_SIZE: ${S3_MAX_FILE_SIZE}
+  #   depends_on:
+  #     migrations:
+  #       condition: service_completed_successfully
+  #     access:
+  #       condition: service_started
+  #     minio-init:
+  #       condition: service_completed_successfully
+  #   networks: [arm_net]
+  # web-maintenance:
+  #   image: ghcr.io/mbatimel/amc-front:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PORT: "3000"
+  #     HOSTNAME: "0.0.0.0"
+  #     # ИИ-помощник: пустой ключ -> работает поиск по каталогу и сценарии
+  #     DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+  #     DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-v4-flash}
+  #     # Контент, баннеры, заявки, обращения и отзывы (см. front/src/app/portal-api)
+  #     PORTAL_DATA_FILE: /data/portal.json
+  #   volumes:
+  #     - front_portal_data:/data
+  #   depends_on:
+  #     - access
+  #   networks: [arm_net]
+  # web-dealer:
+  #   image: ghcr.io/mbatimel/amc-admin-front:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PORT: "3001"
+  #     HOSTNAME: "0.0.0.0"
+  #     API_PROXY_TARGET: "https://wk.amctechgroup.ru"
+  #     PORTAL_API_PROXY_TARGET: "https://wk.amctechgroup.ru"
+  #     NEXT_PUBLIC_SITE_ORIGIN: "https://wk.amctechgroup.ru"
+  #   depends_on:
+  #     - access
+  #     - front
+  #   networks: [arm_net]
+  # web-admin:
+  #   image: ghcr.io/mbatimel/amc-admin-front:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PORT: "3001"
+  #     HOSTNAME: "0.0.0.0"
+  #     API_PROXY_TARGET: "https://wk.amctechgroup.ru"
+  #     PORTAL_API_PROXY_TARGET: "https://wk.amctechgroup.ru"
+  #     NEXT_PUBLIC_SITE_ORIGIN: "https://wk.amctechgroup.ru"
+  #   depends_on:
+  #     - access
+  #     - front
+  #   networks: [arm_net]
+  # web-langing:
+  #   image: ghcr.io/mbatimel/amc-admin-front:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PORT: "3001"
+  #     HOSTNAME: "0.0.0.0"
+  #     API_PROXY_TARGET: "https://wk.amctechgroup.ru"
+  #     PORTAL_API_PROXY_TARGET: "https://wk.amctechgroup.ru"
+  #     NEXT_PUBLIC_SITE_ORIGIN: "https://wk.amctechgroup.ru"
+  #   depends_on:
+  #     - access
+  #     - front
+  #   networks: [arm_net]
+  # web-customer:
+  #   image: ghcr.io/mbatimel/amc-admin-front:${IMAGE_TAG}
+  #   restart: unless-stopped
+  #   environment:
+  #     PORT: "3001"
+  #     HOSTNAME: "0.0.0.0"
+  #     API_PROXY_TARGET: "https://wk.amctechgroup.ru"
+  #     PORTAL_API_PROXY_TARGET: "https://wk.amctechgroup.ru"
+  #     NEXT_PUBLIC_SITE_ORIGIN: "https://wk.amctechgroup.ru"
+  #   depends_on:
+  #     - access
+  #     - front
+  #   networks: [arm_net]
+  # nginx:
+    # image: nginx:1.27-alpine
+    # restart: unless-stopped
+    # ports:
+    #   - "127.0.0.1:8090:80"
+    # volumes:
+    #   - ./nginx/conf.d:/etc/nginx/conf.d:ro
+    #   - ./nginx/htpasswd:/etc/nginx/htpasswd:ro
+    # depends_on:
+    #   - access
+    #   - admin
+    #   - auth
+    #   - orders
+    #   - products
+    #   - users
+    #   - front
+    #   - swagger-ui
+    #   - admin-front
+    #   - onec-orders-api
+    # networks: [arm_net]
+
+volumes:
+  postgres_payments_data:
+  postgres_cars_data:
+  postgres_chats_data:
+  postgres_users_data:
+
+networks:
+  arm_net:
+    driver: bridge

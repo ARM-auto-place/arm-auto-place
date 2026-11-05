@@ -1,38 +1,84 @@
-
-name: Docker Build
+name: Publish Docker image
 
 on:
-  workflow_call:
+  push:
+    tags:
+      - 'v*'
 
 jobs:
-  docker:
+  build-and-push-image:
+    name: Push Docker image to ghcr
     runs-on: ubuntu-latest
-
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: access
+            dockerfile: ./back/access/Dockerfile
+            image: ghcr.io/mbatimel/amc-access
+          - name: admin
+            dockerfile: ./back/admin/Dockerfile
+            image: ghcr.io/mbatimel/amc-admin
+          - name: auth
+            dockerfile: ./back/auth/Dockerfile
+            image: ghcr.io/mbatimel/amc-auth
+          - name: chat
+            dockerfile: ./back/chat/Dockerfile
+            image: ghcr.io/mbatimel/amc-chat
+          - name: integrations
+            dockerfile: ./back/integrations/Dockerfile
+            image: ghcr.io/mbatimel/amc-onec-sync
+          - name: onec-orders-api
+            dockerfile: ./back/integrations/Dockerfile.onec-orders-api
+            image: ghcr.io/mbatimel/amc-onec-orders-api
+          - name: migrations
+            dockerfile: ./back/migrations/Dockerfile
+            image: ghcr.io/mbatimel/amc-migrations
+          - name: orders
+            dockerfile: ./back/orders/Dockerfile
+            image: ghcr.io/mbatimel/amc-orders
+          - name: products
+            dockerfile: ./back/products/Dockerfile
+            image: ghcr.io/mbatimel/amc-products
+          - name: users
+            dockerfile: ./back/users/Dockerfile
+            image: ghcr.io/mbatimel/amc-users
+          - name: front
+            dockerfile: ./front/Dockerfile
+            image: ghcr.io/mbatimel/amc-front
+          - name: admin-front
+            dockerfile: ./admin-front/Dockerfile
+            image: ghcr.io/mbatimel/amc-admin-front
     permissions:
-      contents: read
       packages: write
-
+      contents: read
+      attestations: write
+      id-token: write
     steps:
-      - name: Checkout
+      - name: Check out the repo
         uses: actions/checkout@v4
 
-      - name: Set lowercase image name
-        id: image
-        run: |
-          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
-
-      - name: Login to GHCR
-        uses: docker/login-action@v3
+      - name: Log in to the Container registry
+        uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.MBATIMEL_AUTO }}
+          password: ${{ secrets.AMC_MBATIMEL }}
 
-      - name: Build and Push
-        uses: docker/build-push-action@v6
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        with:
+          images: ${{ matrix.service.image }}
+          tags: |
+            type=semver,pattern={{version}}
+
+      - name: Build and push Docker images
+        id: push
+        uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
         with:
           context: .
+          file: ${{ matrix.service.dockerfile }}
           push: true
-          tags: |
-            ${{ steps.image.outputs.name }}:latest
-            ${{ steps.image.outputs.name }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
